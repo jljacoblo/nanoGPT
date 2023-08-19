@@ -11,6 +11,7 @@ eval_interval = 25 # keep frequent because we'll overfit
 eval_iters = 20
 log_interval = 5 # don't print too too often
 compile = True
+bias = True
 
 # we expect to overfit on this small dataset, so only save when val improves
 always_save_checkpoint = False
@@ -18,16 +19,17 @@ always_save_checkpoint = False
 wandb_log = False # override via command line if you like
 
 
-gradient_accumulation_steps = 128
-batch_size = 1
-block_size = 2048
+gradient_accumulation_steps = 64
+batch_size = 12
+block_size = 1024
+n_embd = 128
 
 # baby GPT model :)
-n_layer = 8
-n_head = 12
+n_layer = 4
+n_head = 8
 dropout = 0.2
 
-learning_rate = 9e-4 # with baby networks can afford to go a bit higher
+learning_rate = 6e-3 # with baby networks can afford to go a bit higher
 max_iters = 10000
 lr_decay_iters = 10000 # make equal to max_iters usually
 min_lr = 1e-4 # learning_rate / 10 usually
