@@ -46,20 +46,24 @@ def pad_to_nearest(x, base):
 
 
 # %%
-checkpoint = torch.load('/media/j/wdata/git/PYTHON_IMPORT/nanoGPT/out-all-news-char/ckpt_layer4_head8_embd128_block1024.pt', map_location='cuda')
+checkpoint = torch.load('/media/j/wdata/git/PYTHON_IMPORT/nanoGPT/out-all-news-char/ckpt.pt', map_location='cuda')
 gptconf = GPTConfig(**checkpoint['model_args'])
 model = GPT(gptconf)
 state_dict = checkpoint['model']
 unwanted_prefix = '_orig_mod.'
 for k,v in list(state_dict.items()):
-    if k.startswith(unwanted_prefix):
-        state_dict[k[len(unwanted_prefix):]] = state_dict.pop(k)
+  if k.startswith(unwanted_prefix):
+    state_dict[k[len(unwanted_prefix):]] = state_dict.pop(k)
 model.load_state_dict(state_dict, strict=False)
 model = model.to('cuda')
 
 writer = SummaryWriter()
 
-activations, _, _ = track_activations(model, [nn.GELU])
+activations, _, _ = track_activations(model, [
+  'transformer.h.1.mlp.gelu'
+  # 'transformer.wpe'
+  # 'transformer.h.0.ln_1'
+  ])
 
 
 
@@ -74,10 +78,15 @@ decode = lambda l: ''.join([itos[i] for i in l])
 model.encode = encode
 model.decode = decode
 
-# %%
-texts = [''.join(['h' for _ in range(20)])]
 
-output = []
+# %%
+for name, param in model.named_parameters():
+  print(name, param.shape)
+
+# %%
+# texts = [''.join(['h' for _ in range(200)])]
+texts = ['News report said ']
+
 for i in range(1):
   activations_multi = OrderedDict()
   for text in texts:
@@ -85,7 +94,7 @@ for i in range(1):
     x = torch.tensor([start_ids] * 1, dtype=torch.long, device='cuda')
 
 
-    max_new_tokens = 1 # number of tokens generated in each sample
+    max_new_tokens = 4096 # number of tokens generated in each sample
     temperature = 0.8 # 1.0 = no change, < 1.0 = less random, > 1.0 = more random, in predictions
     top_k = max_new_tokens # retain only the top_k most likely tokens, clamp others to have 0 probability
 
@@ -93,15 +102,11 @@ for i in range(1):
     with torch.no_grad():
       y = model.generate(x, max_new_tokens, temperature=temperature, top_k=top_k)
       for j in range(y.shape[0]):
-        output.append(decode(y[j].tolist()))
         print(f'{i} {j} {decode(y[j].tolist())}')
 
     for layer_name, param in activations.items():
     #   add_all_weights_grid_to_tensorboard(writer, name, param, i)
       activations_multi[(layer_name, text)] = param
-
-
-  # torch.save(output, '/media/j/wdata/git/PYTHON_IMPORT/nanoGPT/data/all_news_char/output_layer_0.pkl')
 
 writer.close()
 
@@ -113,30 +118,36 @@ activations_multi = sorted(activations_multi.items(), key=lambda x: x[0][0])
 layers_multi = {}
 for (layer_name, text), param in activations_multi:
 
-  if layer_name == 'transformer.h.0.mlp.gelu':
+  for c in range(param.shape[1]):
 
-    for c in range(param.shape[1]):
-
+    if len(param.shape) == 3:
       weights = param[:,c,:].view(-1)
-      # weights = weights.sum(1).view(-1)
-      pad_n = math.ceil(math.sqrt(weights.shape[0]))
-      weights = F.pad(weights, (0, pad_n **2 - weights.shape[0]), 'constant', 0)
-      weights = weights.view(pad_n, pad_n)
+    elif len(param.shape) == 2:
+      weights = param[c,:].view(-1)
+    
+    # weights = weights.sum(1).view(-1)
 
-      # normalize between 0 and 1
-      weights = (weights - weights.min()) / (weights.max() - weights.min())
+    # normalize between 0 and 1
+    weights = (weights - weights.min()) / (weights.max() - weights.min())
 
-      char = text[c] if c < len(text) else 'last'
+    pad_n = math.ceil(math.sqrt(weights.shape[0]))
+    weights = F.pad(weights, (0, pad_n **2 - weights.shape[0]), 'constant', 0)
+    weights = weights.view(pad_n, pad_n)
 
-      layers_multi.setdefault(layer_name, {})
-      layers_multi[layer_name][f'{char}  {c}'] = weights
+    char = text[c] if c < len(text) else 'last'
+
+    layers_multi.setdefault(layer_name, {})
+    layers_multi[layer_name][f'{char}  {c}'] = weights
 
 
 for layer_name, weights_multi in layers_multi.items():
   pmm = PlotMultiMatrix(layer_name, weights_multi)
   ani = pmm.plot_multi_matrix()
 
-  plt.show()
+  # ani.save(f'animation.mp4', writer='ffmpeg', fps=1, bitrate=24)
 
+  # plt.show()
 
-time.sleep(9999999)
+# %%
+
+# %%
